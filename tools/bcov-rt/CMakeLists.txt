@@ -18,3 +18,9 @@ set(BCOV_DUMP_SOURCES
 set_source_files_properties(${BCOV_DUMP_SOURCES} PROPERTIES COMPILE_FLAGS "-Wno-unused-value")
 
 add_library(bcov-rt SHARED ${BCOV_DUMP_SOURCES})
+
+install(TARGETS bcov-rt
+  RUNTIME DESTINATION bin
+  LIBRARY DESTINATION lib
+  )
+

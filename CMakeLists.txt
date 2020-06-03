@@ -161,3 +161,12 @@ target_link_libraries(bcov
     unicorn
     pthread
     )
+
+##############################################
+############### installation
+
+install(TARGETS bcov
+  RUNTIME DESTINATION bin
+  LIBRARY DESTINATION lib
+  )
+
