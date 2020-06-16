@@ -3,11 +3,55 @@
 #include "core/Disassembler.hpp"
 #include "util/BcovConfigParser.hpp"
 #include "util/ProgOptions.hpp"
-#include "graph/SuperBlock.hpp"
+#include "graph/Dot.hpp"
 #include "elf/ElfPatchManager.hpp"
 #include "elf/ElfModule.hpp"
 #include "util/Logging.hpp"
 
+
+namespace bcov {
+
+void
+dump_program_graphs_of_single_function(const IFunction &function)
+{
+    auto graph_name = "func_" + to_hex(function.address());
+    auto cfg_path = graph_name + ".cfg.dot";
+    auto rev_cfg_path = graph_name + ".rev.cfg.dot";
+    auto pre_dom_tree_path = graph_name + ".pre.dom.dot";
+    auto post_dom_tree_path = graph_name + ".post.dom.dot";
+    auto sb_dom_path = graph_name + ".sb.dom.dot";
+
+    dot::write_cfg(cfg_path,
+                   graph_name,
+                   function.cfg().virtual_entry(),
+                   function.cfg().forward());
+
+    dot::write_cfg(rev_cfg_path,
+                   graph_name,
+                   function.cfg().virtual_exit(),
+                   function.cfg().backward());
+
+    dot::write_domtree(pre_dom_tree_path,
+                       graph_name,
+                       function.predominator().root(),
+                       function.predominator().tree());
+
+    dot::write_domtree(post_dom_tree_path,
+                       graph_name,
+                       function.postdominator().root(),
+                       function.postdominator().tree());
+
+    auto sb_store = SuperBlockStoreBuilder::build(&function);
+
+    dot::write_sb_graph(sb_dom_path,
+                        graph_name,
+                        sb_store.virtual_root(),
+                        sb_store.forward_dom_graph());
+
+    std::cout << function.name() << ": program graphs dumped successfully. \n";
+}
+
+} // bcov
 
 int main(int argc, const char **argv)
 {
@@ -26,6 +70,23 @@ int main(int argc, const char **argv)
             config.add_function(options.selected_function());
         }
         module = ElfModuleBuilder::build(options.input_file(), config);
+    }
+
+    if (options.program_mode() == ProgramMode::kDump) {
+        if (options.selected_function().empty()) {
+            std::cerr << "please provide a function name!";
+            exit(EXIT_FAILURE);
+        }
+
+        auto func = module.get_instrumented_function(options.selected_function());
+        if (!func.is_valid()) {
+            std::cerr << options.selected_function()
+                      << ": selected function not found! \n";
+            exit(EXIT_FAILURE);
+        }
+
+        dump_program_graphs_of_single_function(func);
+        exit(EXIT_SUCCESS);
     }
 
     DCHECK(options.program_mode() == ProgramMode::kReport ||
@@ -76,3 +137,4 @@ int main(int argc, const char **argv)
     std::cout << "file patched successfully\n";
     return 0;
 }
+
