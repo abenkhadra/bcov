@@ -9,7 +9,6 @@ pruning, precise CFG analyses, and sophisticated instrumentation techniques.
 
   - Details are available in our [paper][link-preprint], which is accepted to ESEC/FSE'20.
   - This [blog post][link-post1] elaborates on the availability of function definitions in stripped binaries.
-  - This [blog post][link-post2] describes the program graphs generated in the `dump` mode.  
 
 ## Software prerequisites
 
@@ -76,6 +75,7 @@ bcov -m dump -f "S_search_const" -i ./perl
 ```
 
 Graphs are dumped in the standard DOT format and can be viewed using a dot viewer like `xdot`.
+Please refer to this [blog post][link-post2] for additional details. 
 
 ## Citing
 
