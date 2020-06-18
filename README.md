@@ -16,7 +16,7 @@ The following software must be available:
    - [capstone][link-capstone] branch `next` commit #c3b4ce1901
    - [unicorn][link-unicorn]  branch `master` commit #536c4e77c4
 
-Later versions of both frameworks should work in principle but have not been
+The script `install.sh` takes care of the installation process. Later versions of both frameworks should work in principle but have not been
 tested yet.
 
 ## Research replicability
