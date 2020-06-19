@@ -47,7 +47,7 @@ found in the artifacts repository,
 ```shell script
 export BCOV_OPTIONS="coverage_dir=$PWD"   # sets the directory for dumping coverage data. Defaults to $PWD
 export LD_PRELOAD="[full-path-to-bcov-rt]/libbcov-rt.so"
-./perl.any -e 'print "Hello, bcov\n"'
+./perl.any -e 'print "Hello, bcov!\n"'
 ```
 
 This will produce a dump file that has the extension '.bcov' in your current
@@ -57,7 +57,7 @@ directory. This file can be supplied to `bcov` for coverage reporting,
 bcov -m report -p any -i ./perl -d perl.any.1588260679.1816.bcov > report.out
 ```
 
-Currently, `bcov` can not persist analysis to disk. Therefore, the original binary must be
+Currently, `bcov` can not persist analysis results to disk. Therefore, the original binary must be
 re-analyzed to report coverage. Coverage will be reported for each basic block in the file
 `report.out`. The data in each line lists:
  - BB address
