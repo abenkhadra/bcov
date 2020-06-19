@@ -23,13 +23,13 @@ tested yet.
 
 Please checkout the supplemental [artifacts][link-artifacts].
 
-## Sample usage
+## Usage
 
 The tool supports the following operation modes which are set using the option `--mode` (or simply `-m`):
 
   - `patch`. Patch a given binary.
   - `report`. Report coverage given a patched binary and a coverage data file.
-  - `dump`. Dump various program graphs of a given function. For example, dump the CFG and dominator trees.
+  - `dump`. Dump various program graphs for a given function. For example, dump the CFG and dominator trees.
 
 The following command can be issued to patch a binary,
 
@@ -57,9 +57,8 @@ directory. This file can be supplied to `bcov` for coverage reporting,
 bcov -m report -p any -i ./perl -d perl.any.1588260679.1816.bcov > report.out
 ```
 
-Currently, `bcov` can not persist analysis results between binary
-patching and coverage reporting. Therefore, the original binary has to be
-re-analyzed. Coverage will be reported for each basic block in the file
+Currently, `bcov` can not persist analysis to disk. Therefore, the original binary must be
+re-analyzed to report coverage. Coverage will be reported for each basic block in the file
 `report.out`. The data in each line lists:
  - BB address
  - BB instruction count
@@ -68,11 +67,20 @@ re-analyzed. Coverage will be reported for each basic block in the file
 
 Also, a coverage summary is reported for each function.
 
-For a given function, it is possible to selectively dump various program graphs like the CFG and superblock dominator graph. For example, consider function `S_search_const` in `perl`,
+For a given function, it is possible to selectively dump various program graphs like the CFG and superblock dominator graph. 
+For example, consider function `S_search_const` in `perl`,
 
 ```shell script
 bcov -m dump -f "S_search_const" -i ./perl
 ```
+
+This command will dump the following files:
+
+   - func_421d90.cfg.dot. The CFG of the function.
+   - func_421d90.rev.cfg.dot. Similar to the CFG but with all edges reversed.
+   - func_421d90.pre.dom.dot. Predominator tree.
+   - func_421d90.post.dom.dot. Postdominator tree.
+   - func_421d90.sb.dom.dot. Superblock dominator graph.
 
 Graphs are dumped in the standard DOT format and can be viewed using a dot viewer like `xdot`.
 Please refer to this [blog post][link-post2] for additional details. 
