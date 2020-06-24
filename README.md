@@ -1,13 +1,13 @@
 
 ## bcov
 
-A tool for efficient binary-level coverage analysis. `bcov` statically
+A tool for efficient binary-level coverage analysis. **bcov** statically
 instruments x86-64 ELF binaries without compiler support. It features probe
 pruning, precise CFG analyses, and sophisticated instrumentation techniques.
 
 ## Resources
 
-  - Details are available in our [paper][link-preprint], which is accepted to ESEC/FSE'20.
+  - Details are available in our [paper][link-preprint] which is accepted to ESEC/FSE'20.
   - This [blog post][link-post1] elaborates on the availability of function definitions in stripped binaries.
 
 ## Software prerequisites
@@ -16,12 +16,13 @@ The following software must be available:
    - [capstone][link-capstone] branch `next` commit #c3b4ce1901
    - [unicorn][link-unicorn]  branch `master` commit #536c4e77c4
 
-The script `install.sh` takes care of the installation process. Later versions of both frameworks should work in principle but have not been
-tested yet.
+Later versions of both frameworks should work in principle but have not been
+tested yet. The script `install.sh` can be used for installation.
 
-## Research replicability
+## Research reproducibility
 
-Please checkout the supplemental [artifacts][link-artifacts].
+We provide a [Dockerfile][link-dockerfile] which installs **bcov** and runs the available experiment. 
+Please checkout the supplemental [artifacts][link-artifacts] for more details. 
 
 ## Usage
 
@@ -51,13 +52,13 @@ export LD_PRELOAD="[full-path-to-bcov-rt]/libbcov-rt.so"
 ```
 
 This will produce a dump file that has the extension '.bcov' in your current
-directory. This file can be supplied to `bcov` for coverage reporting,
+directory. This file can be supplied to **bcov** for coverage reporting,
 
 ```shell script
 bcov -m report -p any -i ./perl -d perl.any.1588260679.1816.bcov > report.out
 ```
 
-Currently, `bcov` can not persist analysis results to disk. Therefore, the original binary must be
+Currently, **bcov** can not persist analysis results to disk. Therefore, the original binary must be
 re-analyzed to report coverage. Coverage will be reported for each basic block in the file
 `report.out`. The data in each line lists:
  - BB address
@@ -65,7 +66,7 @@ re-analyzed to report coverage. Coverage will be reported for each basic block i
  - is covered
  - is fallthrough (i.e., does not terminate with a branch)
 
-Also, a coverage summary is reported for each function.
+Also, a coverage summary is reported for each function. For example, it shows the basic block and instruction coverage ratios.
 
 For a given function, it is possible to selectively dump various program graphs like the CFG and superblock dominator graph. 
 For example, consider function `S_search_const` in `perl`,
@@ -108,3 +109,5 @@ This software is distributed under the MIT license. See `LICENSE.txt` for detail
  [link-artifacts]: https://github.com/abenkhadra/bcov-artifacts
  [link-post1]: https://blog.formallyapplied.com/2020/05/function-identification/
  [link-post2]: https://blog.formallyapplied.com/2020/06/bcov-program-graphs/
+ [link-dockerfile]: https://github.com/abenkhadra/bcov-artifacts/blob/master/Dockerfile
+ 
