@@ -8,6 +8,7 @@ pruning, precise CFG analyses, and sophisticated instrumentation techniques.
 ## Resources
 
   - Details are available in our [paper][link-preprint] which is accepted to ESEC/FSE'20.
+  - This [post][link-llvmdev] on llvm-dev briefly introduces **bcov** and discusses potential future work.
   - This [blog post][link-post1] elaborates on the availability of function definitions in stripped binaries.
 
 ## Software prerequisites
@@ -110,4 +111,4 @@ This software is distributed under the MIT license. See `LICENSE.txt` for detail
  [link-post1]: https://blog.formallyapplied.com/2020/05/function-identification/
  [link-post2]: https://blog.formallyapplied.com/2020/06/bcov-program-graphs/
  [link-dockerfile]: https://github.com/abenkhadra/bcov-artifacts/blob/master/Dockerfile
- 
+ [link-llvmdev]: http://lists.llvm.org/pipermail/llvm-dev/2020-June/142821.html
