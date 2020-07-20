@@ -511,8 +511,8 @@ public:
         kOrigData,
         kPatchCode,
         kPatchData,
-        kROSyms,
-        kROData,
+        kROData1,
+        kROData2,
     };
 
     static constexpr unsigned kMaxLoadableSegCount = 6U;
@@ -651,6 +651,8 @@ X64ElfPatcher::init_memory_regions(const elf::elf &patch_file)
                         seg.get_hdr().memsz);
         };
     unsigned seg_count = 0;
+    // TODO: the layout and number of supported elf segments is fixed. This can
+    //  be improved upon.
     for (const auto &seg: patch_file.segments()) {
         if (!is_loadable(seg)) {
             continue;
@@ -676,10 +678,10 @@ X64ElfPatcher::init_memory_regions(const elf::elf &patch_file)
             continue;
         }
 
-        if (!get_region(RegionKind::kROSyms).valid()) {
-            init_region_from_seg(seg, get_region(RegionKind::kROSyms));
+        if (!get_region(RegionKind::kROData1).valid()) {
+            init_region_from_seg(seg, get_region(RegionKind::kROData1));
         } else {
-            init_region_from_seg(seg, get_region(RegionKind::kROData));
+            init_region_from_seg(seg, get_region(RegionKind::kROData2));
         }
     }
     get_region(RegionKind::kPatchData).seekp(BCOV_DATA_HDR_SIZE);
@@ -698,9 +700,13 @@ X64ElfPatcher::get_jumptab_region(addr_t base_address)
     if (get_region(RegionKind::kOrigCode).is_inside(base_address)) {
         return &get_region(RegionKind::kOrigCode);
     }
-    if (get_region(RegionKind::kROData).is_inside(base_address)) {
-        return &get_region(RegionKind::kROData);
+    if (get_region(RegionKind::kROData1).is_inside(base_address)) {
+        return &get_region(RegionKind::kROData1);
     }
+    if (get_region(RegionKind::kROData2).is_inside(base_address)) {
+        return &get_region(RegionKind::kROData2);
+    }
+
     return nullptr;
 }
 

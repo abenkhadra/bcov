@@ -37,12 +37,12 @@ to_string(const MemorySegment &seg)
     std::stringstream os;
     os << std::hex << "st: " << seg.start() << ", end: " << seg.end()
        << ", size: " << seg.size() << ", fsize: " << seg.file_size()
-       << ", perm: " << seg.perms();
+       << ", perm: " << (uint32_t) seg.perms();
     return os.str();
 }
 
 static Permissions
-to_permisions(elf::pf flags)
+to_bcov_permissions(elf::pf flags)
 {
     using namespace elf;
     auto result = Permissions::None;
@@ -52,11 +52,9 @@ to_permisions(elf::pf flags)
     if ((flags & pf::r) == pf::r) {
         result = result | Permissions::R;
     }
-
     if ((flags & pf::w) == pf::w) {
         result = result | Permissions::W;
     }
-
     return result;
 }
 
@@ -107,15 +105,8 @@ flax_mgr_invalid_mem_callback(uc_engine *uc, uc_mem_type type, uint64_t address,
 //==============================================================================
 
 struct FlaxManager::Impl {
-
+    static constexpr uint8_t kUninitializedSegmentIdx = 0;
     static constexpr addr_t kDefaultBaseAddress = 0x555555554000;
-    static constexpr addr_t kCoreSegCount = 6;
-    static constexpr unsigned kNoteDataSegIdx = 0;
-    static constexpr unsigned kCodeSegIdx = 1;
-    static constexpr unsigned kRoDataSegIdx = 2;
-    static constexpr unsigned kRelRoSegIdx = 3;
-    static constexpr unsigned kDataSegIdx = 4;
-    static constexpr unsigned kStackSegIdx = 5;
     static constexpr unsigned kCallbackCount = 4;
 
     static constexpr unsigned kCodeHookKind = UC_HOOK_CODE;
@@ -128,19 +119,16 @@ struct FlaxManager::Impl {
     ~Impl();
 
     MemorySegment &code_segment()
-    { return m_mem_segments[kCodeSegIdx]; }
+    { return m_mem_segments[m_code_seg_idx]; }
 
     MemorySegment &data_segment()
-    { return m_mem_segments[kDataSegIdx]; }
-
-    MemorySegment &rodata_segment()
-    { return m_mem_segments[kRoDataSegIdx]; }
+    { return m_mem_segments[m_data_seg_idx]; }
 
     MemorySegment &relro_segment()
-    { return m_mem_segments[kRelRoSegIdx]; }
+    { return m_mem_segments[m_relro_seg_idx]; }
 
     MemorySegment &stack_segment()
-    { return m_mem_segments[kStackSegIdx]; }
+    { return m_mem_segments[m_stack_seg_idx]; }
 
     void load_code_segment(const elf::segment &seg);
 
@@ -180,11 +168,15 @@ struct FlaxManager::Impl {
     std::vector<MemorySegment> m_mem_segments;
     std::array<uc_hook, kCallbackCount> m_callbacks;
     EmulatorEngine m_engine;
+    uint8_t m_code_seg_idx = kUninitializedSegmentIdx;
+    uint8_t m_data_seg_idx = kUninitializedSegmentIdx;
+    uint8_t m_relro_seg_idx = kUninitializedSegmentIdx;
+    uint8_t m_stack_seg_idx = kUninitializedSegmentIdx;
 };
 
 FlaxManager::Impl::Impl()
     : m_base_address(0), m_last_reachable_addr(0),
-      m_bss_seg_buf(nullptr), m_visitor(nullptr), m_mem_segments(kCoreSegCount)
+      m_bss_seg_buf(nullptr), m_visitor(nullptr)
 { }
 
 FlaxManager::Impl::~Impl()
@@ -208,14 +200,9 @@ FlaxManager::Impl::save_last_reachable_addr()
 void
 FlaxManager::Impl::load_code_segment(const elf::segment &seg)
 {
-    if (seg.get_hdr().vaddr == 0) {
-        // cast kDefaultBaseAddress to create a temporary avoiding odr-use link error
-        LOG(INFO)
-            << "flax: module seems position independent, relocating to "
-            << "base address @ " << std::hex << (addr_t) kDefaultBaseAddress;
-        m_base_address = kDefaultBaseAddress;
-    }
-    MemorySegment &mem_seg = code_segment();
+    m_code_seg_idx = m_mem_segments.size();
+    m_mem_segments.emplace_back(MemorySegment());
+    auto &mem_seg = m_mem_segments.back();
     load_segment(seg, mem_seg);
     DVLOG(3) << "flax: mapped code segment " << to_string(mem_seg);
 }
@@ -223,8 +210,9 @@ FlaxManager::Impl::load_code_segment(const elf::segment &seg)
 void
 FlaxManager::Impl::load_data_segment(const elf::segment &seg)
 {
-    MemorySegment &mem_seg = data_segment();
-
+    m_data_seg_idx = m_mem_segments.size();
+    m_mem_segments.emplace_back(MemorySegment());
+    auto &mem_seg = m_mem_segments.back();
     load_segment(seg, mem_seg);
 
     auto bss_buf_size = mem_seg.size() - mem_seg.file_size();
@@ -246,7 +234,7 @@ FlaxManager::Impl::load_segment(const elf::segment &seg, MemorySegment &mem_seg)
     mem_seg.buffer((buffer_t) seg.data());
     mem_seg.start(seg.get_hdr().vaddr + m_base_address);
     mem_seg.end(mem_seg.start() + seg.get_hdr().memsz);
-    mem_seg.perms((uint8_t) to_permisions(seg.get_hdr().flags));
+    mem_seg.perms((uint8_t) to_bcov_permissions(seg.get_hdr().flags));
     mem_seg.file_size(seg.get_hdr().filesz);
 
     auto low_bound = x64::page_aligned_lower(mem_seg.start());
@@ -263,8 +251,8 @@ FlaxManager::Impl::load_segment(const elf::segment &seg, MemorySegment &mem_seg)
 void
 FlaxManager::Impl::load_rodata_segment(const elf::segment &seg)
 {
-    MemorySegment &mem_seg = rodata_segment();
-
+    m_mem_segments.emplace_back(MemorySegment());
+    auto &mem_seg = m_mem_segments.back();
     load_segment(seg, mem_seg);
 
     DCHECK(mem_seg.size() == mem_seg.file_size());
@@ -274,7 +262,9 @@ FlaxManager::Impl::load_rodata_segment(const elf::segment &seg)
 void
 FlaxManager::Impl::set_relro_segment(const elf::segment &seg)
 {
-    MemorySegment &relro_seg = relro_segment();
+    m_relro_seg_idx = m_mem_segments.size();
+    m_mem_segments.emplace_back(MemorySegment());
+    auto &relro_seg = m_mem_segments.back();
     relro_seg.buffer((buffer_t) seg.data());
     relro_seg.start(seg.get_hdr().vaddr + m_base_address);
     relro_seg.end(relro_seg.start() + seg.get_hdr().memsz);
@@ -283,39 +273,33 @@ FlaxManager::Impl::set_relro_segment(const elf::segment &seg)
 
     auto low_bound = x64::page_aligned_lower(relro_seg.start());
     auto high_bound = x64::page_aligned_higher(relro_seg.end());
-    auto relro_aligned_size = high_bound - low_bound;
-    auto err = uc_mem_protect(m_engine.get(), low_bound, relro_aligned_size,
+    auto aligned_size = high_bound - low_bound;
+    auto err = uc_mem_protect(m_engine.get(), low_bound, aligned_size,
                               relro_seg.perms());
 
     log_fatal_if(err != UC_ERR_OK, uc_strerror(err));
-    LOG_IF(relro_seg.start() != data_segment().start(), ERROR)
-        << "unsupported relro segment mapping!";
-    auto fixed_data_seg_start = low_bound + relro_aligned_size;
-    auto offset = (fixed_data_seg_start - data_segment().start());
-    data_segment().file_size(data_segment().file_size() - offset);
-    data_segment().start(fixed_data_seg_start);
-    data_segment().buffer(data_segment().buffer() + offset);
-    DVLOG(3) << "flax: mapped relro segment " << to_string(relro_seg);
-    DVLOG(3) << "flax: adjust data segment  " << to_string(data_segment());
+    DCHECK(data_segment().is_inside(relro_seg.start()) &&
+           data_segment().size() >= relro_seg.size());
 }
 
 void
 FlaxManager::Impl::unmap_memory()
 {
     VLOG(2) << "flax: unmapping engine memory";
-    for (const auto &seg : m_mem_segments) {
-        if (!seg.valid()) {
-            continue;
-        }
+    uc_mem_region *regions;
+    uint32_t count;
+    auto err = uc_mem_regions(m_engine.get(), &regions, &count);
+    log_fatal_if(err != UC_ERR_OK, uc_strerror(err));
 
-        auto low_bound = x64::page_aligned_lower(seg.start());
-        auto high_bound = x64::page_aligned_higher(seg.end());
-
-        auto err = uc_mem_unmap(m_engine.get(), low_bound, high_bound - low_bound);
+    for (unsigned i = 0; i < count; ++i) {
+        auto region_size = regions[i].end - regions[i].begin + 1;
+        err = uc_mem_unmap(m_engine.get(), regions[i].begin, region_size);
         log_fatal_if(err != UC_ERR_OK, uc_strerror(err));
     }
 
-    if (data_segment().valid()) {
+    uc_free((void *) regions);
+
+    if (data_segment().valid() && m_bss_seg_buf != nullptr) {
         free(m_bss_seg_buf);
         m_bss_seg_buf = nullptr;
     }
@@ -329,7 +313,6 @@ FlaxManager::Impl::unmap_memory()
 bool
 FlaxManager::Impl::print_memory_mapping()
 {
-
     uc_mem_region *regions;
     uint32_t count;
     auto err = uc_mem_regions(m_engine.get(), &regions, &count);
@@ -429,6 +412,8 @@ FlaxManager::Impl::set_stack_segment(addr_t start_addr, size_t size)
     if (stack_segment().valid()) {
         return;
     }
+    m_stack_seg_idx = m_mem_segments.size();
+    m_mem_segments.emplace_back(MemorySegment());
     stack_segment().start(start_addr);
     stack_segment().end(start_addr + size);
     stack_segment().file_size(size);
@@ -463,15 +448,26 @@ FlaxManager::load_module(const elf::elf &module)
         m_impl->unmap_memory();
     }
 
+    m_impl->m_mem_segments.emplace_back(MemorySegment());
+    bool fst_loadable_seg_found = false;
     for (const auto &seg : module.segments()) {
         if (elf::is_gnu_relro(seg)) {
             DCHECK(data_segment().valid());
             m_impl->set_relro_segment(seg);
         }
-
         if (!elf::is_loadable(seg)) {
             continue;
         }
+
+        if (!fst_loadable_seg_found && seg.get_hdr().vaddr == 0) {
+            // casted kDefaultBaseAddress to create a temporary avoiding odr-use link error
+            LOG(INFO)
+                << "flax: module seems position independent, relocating to "
+                << "base address @ " << std::hex << (addr_t) Impl::kDefaultBaseAddress;
+            m_impl->m_base_address = Impl::kDefaultBaseAddress;
+        }
+
+        fst_loadable_seg_found = true;
         if (elf::is_executable(seg)) {
             m_impl->load_code_segment(seg);
             continue;
@@ -480,11 +476,7 @@ FlaxManager::load_module(const elf::elf &module)
             m_impl->load_data_segment(seg);
             continue;
         }
-        if (!elf::is_writable(seg) && code_segment().valid()) {
-            // ignore read-only segment before code segment
-            m_impl->load_rodata_segment(seg);
-            continue;
-        }
+        m_impl->load_rodata_segment(seg);
     }
     DCHECK(m_impl->print_memory_mapping());
 }
@@ -502,34 +494,31 @@ FlaxManager::reset_stack_segment()
 }
 
 bool
-FlaxManager::is_readable(addr_t address)
+FlaxManager::is_readable(addr_t address) const noexcept
 {
-    return (code_segment().start() <= address && address < data_segment().end()) ||
-           stack_segment().is_inside(address);
+    for (const auto &seg : m_impl->m_mem_segments) {
+        if (seg.is_inside(address)) return true;
+    }
+    return false;
 }
 
 bool
-FlaxManager::is_executable(addr_t address)
+FlaxManager::is_executable(addr_t address) const noexcept
 {
     return code_segment().is_inside(address);
 }
 
 bool
-FlaxManager::is_writable(addr_t address)
+FlaxManager::is_writable(addr_t address) const noexcept
 {
-    return data_segment().is_inside(address) || stack_segment().is_inside(address);
+    return !relro_segment().is_inside(address) &&
+           (data_segment().is_inside(address) || stack_segment().is_inside(address));
 }
 
 const MemorySegment &
 FlaxManager::code_segment() const noexcept
 {
     return m_impl->code_segment();
-}
-
-const MemorySegment &
-FlaxManager::rodata_segment() const noexcept
-{
-    return m_impl->rodata_segment();
 }
 
 const MemorySegment &
@@ -541,7 +530,7 @@ FlaxManager::data_segment() const noexcept
 const MemorySegment &
 FlaxManager::stack_segment() const noexcept
 {
-    return m_impl->m_mem_segments[Impl::kStackSegIdx];
+    return m_impl->m_mem_segments[m_impl->m_stack_seg_idx];
 }
 
 const MemorySegment &

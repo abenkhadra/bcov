@@ -59,7 +59,7 @@ public:
     addr_t end() const
     { return m_end; }
 
-    uint32_t perms() const
+    uint8_t perms() const
     { return m_perms; }
 
     size_t size() const
@@ -105,15 +105,13 @@ public:
 
     void reset_stack_segment();
 
-    bool is_readable(addr_t address);
+    bool is_readable(addr_t address) const noexcept;
 
-    bool is_executable(addr_t address);
+    bool is_executable(addr_t address) const noexcept;
 
-    bool is_writable(addr_t address);
+    bool is_writable(addr_t address) const noexcept;
 
     const MemorySegment &code_segment() const noexcept;
-
-    const MemorySegment &rodata_segment() const noexcept;
 
     const MemorySegment &data_segment() const noexcept;
 

@@ -126,7 +126,7 @@ int main(int argc, const char **argv)
     try {
         auto success = patch_mgr.patch(options.input_file(), options.output_file());
         if (!success) {
-            std::cout << "unsupported input!";
+            std::cout << "can not patch input file!\n";
             exit(0);
         }
     } catch (const std::exception &exp) {

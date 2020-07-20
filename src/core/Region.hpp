@@ -14,6 +14,8 @@
 
 namespace bcov {
 
+// XXX permissions are consistent with that of unicorn, which deviates from the common
+// Linux convention where, e.g., X = 1
 enum class Permissions : uint8_t {
     None = 0x0,
     R = 0x1,

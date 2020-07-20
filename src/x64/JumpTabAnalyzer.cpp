@@ -2995,7 +2995,13 @@ JumpTabMicroXAnalyzer::try_fix_jumptab_index(const MicroExecSlice &inst_slice,
 
     auto inst_it = inst_slice.instructions().begin();
     for (; inst_it != inst_slice.instructions().end() &&
-           (*inst_it)->address() != inst_addr_slice[i]; ++inst_it) { }
+           m_microx_mgr->get_mapped((*inst_it)->address()) !=
+           inst_addr_slice[i]; ++inst_it) { }
+
+    if (inst_it == inst_slice.instructions().end()) {
+        DVLOG(3) << "jumptab: attempt to fix memory index failed!";
+        return;
+    }
 
     disasm_inst(m_function, *(*inst_it), m_disasm, m_cs_inst.get());
     auto mem_opnd_p = get_mem_opnd(m_cs_inst.get());
@@ -3149,7 +3155,7 @@ JumpTabAnalyzerImpl::analyze_pivot_bb(const BasicBlock &pivot_bb,
 bool
 JumpTabAnalyzerImpl::valid_jumptab_address(int64_t value)
 {
-    if ((addr_t) value < m_function->address()) {
+    if ((addr_t) value < 0x1000) {
         // useful to remove small constants
         return false;
     }

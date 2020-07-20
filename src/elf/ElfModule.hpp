@@ -129,6 +129,8 @@ public:
 
     IFunction get_instrumented_function(sstring_view func_name) const;
 
+    IFunction get_instrumented_function(addr_t func_address) const;
+
     ElfFunction *get_static_function_at(addr_t func_addr) const noexcept;
 
     ElfFunction *get_dynamic_function_at(addr_t func_addr) const noexcept;
@@ -148,7 +150,7 @@ public:
 
     buffer_t get_buffer(addr_t address) const noexcept;
 
-    bool is_inside_got(addr_t address) const noexcept;
+    bool is_inside_got_region(addr_t address) const noexcept;
 
     uint64_t read_address(addr_t address) const noexcept;
 

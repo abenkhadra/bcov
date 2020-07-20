@@ -175,6 +175,23 @@ initialize_known_noreturn_funcs(std::set<sstring> &noreturn_funcs)
     };
 }
 
+static Permissions
+to_bcov_permissions(elf::pf flags)
+{
+    using namespace elf;
+    auto result = Permissions::None;
+    if ((flags & pf::x) == pf::x) {
+        result = result | Permissions::X;
+    }
+    if ((flags & pf::r) == pf::r) {
+        result = result | Permissions::R;
+    }
+    if ((flags & pf::w) == pf::w) {
+        result = result | Permissions::W;
+    }
+    return result;
+}
+
 static inline bool
 is_known_noreturn_func(sstring_view name,
                        const std::set<sstring> &known_noreturn_funcs)
@@ -233,7 +250,7 @@ parse_rela_dyn_section(const ElfModule &module, const elf::section &sec,
         const auto type = ELF64_R_TYPE(rela_entry->r_info);
 
         if (type == R_X86_64_GLOB_DAT &&
-            module.is_inside_got(rela_entry->r_offset)) {
+            module.is_inside_got_region(rela_entry->r_offset)) {
             rela_entries.emplace_back(std::make_pair(idx, rela_entry->r_offset));
         }
     }
@@ -389,11 +406,7 @@ ElfFunction::padding() const noexcept
 //==============================================================================
 
 struct ElfModule::Impl {
-    static constexpr unsigned kMemRegionCount = 4;
-    static constexpr unsigned kCodeRegionIdx = 0;
-    static constexpr unsigned kRoDataRegionIdx = 1;
-    static constexpr unsigned kDataRegionIdx = 2;
-    static constexpr unsigned kRelRoRegionIdx = 3;
+    static constexpr unsigned kUninitializedRegionIdx = 0;
 
     Impl();
 
@@ -410,12 +423,15 @@ struct ElfModule::Impl {
     std::map<sstring, ElfFunction *> m_name_func_map;
     std::map<addr_t, ElfFunction *> m_func_alias_map;
     dwarf::EhFrame m_eh_frame;
-    MemoryArea m_got_area;
-    std::array<MemoryRegion, kMemRegionCount> m_mem_regions;
+    std::vector<MemoryRegion> m_mem_regions;
     ElfCallGraph m_call_graph;
     std::shared_ptr<uint8_t> m_data_region_buf;
     mutable Demangler m_demangler;
     bool m_is_position_independent_code = true;
+    uint8_t m_code_region_idx = kUninitializedRegionIdx;
+    uint8_t m_data_region_idx = kUninitializedRegionIdx;
+    uint8_t m_got_region_idx = kUninitializedRegionIdx;
+    uint8_t m_got_plt_region_idx = kUninitializedRegionIdx;
 };
 
 ElfModule::Impl::Impl() :
@@ -461,13 +477,13 @@ ElfModule::eh_frame() noexcept
 const MemoryRegion &
 ElfModule::code_region() const noexcept
 {
-    return m_impl->m_mem_regions[ElfModule::Impl::kCodeRegionIdx];
+    return m_impl->m_mem_regions[m_impl->m_code_region_idx];
 }
 
 const MemoryRegion &
 ElfModule::data_region() const noexcept
 {
-    return m_impl->m_mem_regions[ElfModule::Impl::kDataRegionIdx];
+    return m_impl->m_mem_regions[m_impl->m_data_region_idx];
 }
 
 bool
@@ -483,6 +499,20 @@ ElfModule::get_instrumented_function(sstring_view func_name) const
                                 m_impl->m_instrumented_funcs.end(),
                                 [&func_name](const IFunction &func) {
                                     return func.name() == func_name;
+                                });
+    if (func_it != m_impl->m_instrumented_funcs.end()) {
+        return *func_it;
+    }
+    return IFunction();
+}
+
+IFunction
+ElfModule::get_instrumented_function(addr_t func_address) const
+{
+    auto func_it = std::find_if(m_impl->m_instrumented_funcs.begin(),
+                                m_impl->m_instrumented_funcs.end(),
+                                [&func_address](const IFunction &func) {
+                                    return func.address() == func_address;
                                 });
     if (func_it != m_impl->m_instrumented_funcs.end()) {
         return *func_it;
@@ -564,9 +594,18 @@ ElfModule::demangler() const noexcept
 buffer_t
 ElfModule::get_buffer(addr_t address) const noexcept
 {
-    for (const auto &seg : m_impl->m_mem_regions) {
-        if (seg.is_inside(address)) {
-            return seg.get_buffer(address);
+    // faster lookup
+    if (code_region().is_inside(address)) {
+        return code_region().get_buffer(address);
+    }
+
+    if (data_region().is_inside(address)) {
+        return data_region().get_buffer(address);
+    }
+
+    for (const auto &region : m_impl->m_mem_regions) {
+        if (region.is_inside(address)) {
+            return region.get_buffer(address);
         }
     }
     return nullptr;
@@ -579,32 +618,38 @@ ElfModule::read_address(addr_t address) const noexcept
 }
 
 bool
-ElfModule::is_inside_got(addr_t address) const noexcept
+ElfModule::is_inside_got_region(addr_t address) const noexcept
 {
-    // address might just be at the end
-    return m_impl->m_got_area.start() <= address &&
-           address <= m_impl->m_got_area.end();
+    auto &got_region = m_impl->m_mem_regions[m_impl->m_got_region_idx];
+    auto &got_plt_region = m_impl->m_mem_regions[m_impl->m_got_plt_region_idx];
+    return got_region.is_inside(address) || got_plt_region.is_inside(address);
 }
 
 bool
 ElfModule::init_got_region() noexcept
 {
     const auto &got_sec = binary().get_section(GOT_SEC_NAME);
-    if (!got_sec.valid()) {
-        return false;
+    auto &regions = m_impl->m_mem_regions;
+    // XXX: address might just be located at the end of got regions
+    if (got_sec.valid()) {
+        regions.emplace_back(
+            MemoryRegion((buffer_t) got_sec.data(), got_sec.get_hdr().addr,
+                         got_sec.get_hdr().size + sizeof(void *)));
+        regions.back().permissions(Permissions::R);
+        m_impl->m_got_region_idx = regions.size() - 1;
     }
 
     const auto &got_plt_sec = binary().get_section(GOT_PLT_SEC_NAME);
     if (got_plt_sec.valid()) {
         // assuming sections are adjacent
-        m_impl->m_got_area.start(got_sec.get_hdr().addr);
-        m_impl->m_got_area.size(got_sec.get_hdr().size + got_plt_sec.size());
-    } else {
-        m_impl->m_got_area.start(got_sec.get_hdr().addr);
-        m_impl->m_got_area.size(got_sec.get_hdr().size);
+        regions.emplace_back(
+            MemoryRegion((buffer_t) got_plt_sec.data(), got_plt_sec.get_hdr().addr,
+                         got_plt_sec.get_hdr().size + sizeof(void *)));
+        regions.back().permissions(Permissions::R);
+        m_impl->m_got_plt_region_idx = regions.size() - 1;
     }
 
-    return true;
+    return m_impl->m_got_region_idx != m_impl->kUninitializedRegionIdx;
 }
 
 void
@@ -746,87 +791,56 @@ ElfModuleBuilder::Impl::check_position_independent_code()
 void
 ElfModuleBuilder::Impl::build_loadable_segments()
 {
-    // precondition: segments can be found in the following order: code, data, gnu_relro
     auto &regions = m_module.m_impl->m_mem_regions;
-    m_module.m_impl->m_mem_regions.fill(MemoryRegion());
-    bool relro_seg_found = false;
-    for (const auto &seg : m_module.m_impl->m_binary.segments()) {
-        if (elf::is_gnu_relro(seg)) {
-            regions[ElfModule::Impl::kRelRoRegionIdx] =
-                MemoryRegion((buffer_t) seg.data(), seg.get_hdr().vaddr,
-                             seg.get_hdr().memsz);
-            regions[ElfModule::Impl::kRelRoRegionIdx].permissions(Permissions::R);
-            relro_seg_found = true;
-        }
+    // start with an invalid region
+    regions.emplace_back(MemoryRegion((buffer_t) nullptr, 0, 0));
 
+    for (const auto &seg : m_module.m_impl->m_binary.segments()) {
         if (!elf::is_loadable(seg)) {
             continue;
         }
 
+        regions.emplace_back(
+            MemoryRegion((buffer_t) seg.data(), seg.get_hdr().vaddr,
+                         seg.get_hdr().memsz));
+        regions.back().permissions(to_bcov_permissions(seg.get_hdr().flags));
+
         if (elf::is_executable(seg)) {
-            regions[ElfModule::Impl::kCodeRegionIdx] =
-                MemoryRegion((buffer_t) seg.data(), seg.get_hdr().vaddr,
-                             seg.get_hdr().memsz);
-
-            regions[ElfModule::Impl::kCodeRegionIdx].permissions(
-                Permissions::R | Permissions::X);
+            LOG_IF(m_module.m_impl->m_code_region_idx !=
+                   m_module.m_impl->kUninitializedRegionIdx, FATAL)
+                << "we expect only one code segment!";
+            m_module.m_impl->m_code_region_idx = regions.size() - 1;
             continue;
         }
 
-        if (elf::is_writable(seg)) {
-
-            LOG_IF(bcov_has_valid_magic((const uint8_t *) seg.data()), FATAL)
-                << "original binary expected, given binary already patched!";
-
-            m_module.m_impl->m_data_region_buf =
-                make_shared_array<uint8_t>(seg.get_hdr().memsz);
-            auto buf = m_module.m_impl->m_data_region_buf.get();
-            CHECK(seg.get_hdr().memsz >= seg.get_hdr().filesz);
-            std::memset(buf + seg.get_hdr().filesz, 0,
-                        seg.get_hdr().memsz - seg.get_hdr().filesz);
-            std::memcpy(buf, seg.data(), seg.get_hdr().filesz);
-            // our data segment should account for .bss data in memory
-            regions[ElfModule::Impl::kDataRegionIdx] =
-                MemoryRegion((buffer_t) buf, seg.get_hdr().vaddr,
-                             seg.get_hdr().memsz);
-            regions[ElfModule::Impl::kDataRegionIdx].permissions(
-                Permissions::R | Permissions::W);
+        if (!elf::is_writable(seg)) {
             continue;
         }
 
-        if (!elf::is_writable(seg) &&
-            regions[ElfModule::Impl::kCodeRegionIdx].valid()) {
+        LOG_IF(bcov_has_valid_magic((const uint8_t *) seg.data()), FATAL)
+            << "given binary is already patched!";
 
-            regions[ElfModule::Impl::kRoDataRegionIdx] =
-                MemoryRegion((buffer_t) seg.data(), seg.get_hdr().vaddr,
-                             seg.get_hdr().memsz);
-            regions[ElfModule::Impl::kRoDataRegionIdx].permissions(Permissions::R);
-        }
+        LOG_IF(m_module.m_impl->m_data_region_idx !=
+               m_module.m_impl->kUninitializedRegionIdx, FATAL)
+            << "expecting only one data segment!";
+
+        m_module.m_impl->m_data_region_idx = regions.size() - 1;
+        m_module.m_impl->m_data_region_buf =
+            make_shared_array<uint8_t>(seg.get_hdr().memsz);
+        auto buf = m_module.m_impl->m_data_region_buf.get();
+        CHECK(seg.get_hdr().memsz >= seg.get_hdr().filesz);
+        std::memcpy(buf, seg.data(), seg.get_hdr().filesz);
+        // our data segment should account for .bss data in memory
+        std::memset(buf + seg.get_hdr().filesz, 0,
+                    seg.get_hdr().memsz - seg.get_hdr().filesz);
+        regions.back() =
+            MemoryRegion((buffer_t) buf, seg.get_hdr().vaddr,
+                         seg.get_hdr().memsz);
+        regions.back().permissions(to_bcov_permissions(seg.get_hdr().flags));
     }
-
-    if (!relro_seg_found) {
-        LOG(INFO) << "<gnu_relro> segment was not found!";
-        return;
-    }
-
-    DCHECK(regions[ElfModule::Impl::kDataRegionIdx].size() >
-           regions[ElfModule::Impl::kRelRoRegionIdx].size());
-
-    // separate writable data into second segment
-    regions[ElfModule::Impl::kDataRegionIdx].size(
-        regions[ElfModule::Impl::kDataRegionIdx].size() -
-        regions[ElfModule::Impl::kRelRoRegionIdx].size());
-
-    regions[ElfModule::Impl::kRelRoRegionIdx].base_pos(
-        regions[ElfModule::Impl::kDataRegionIdx].base_pos());
-
-    regions[ElfModule::Impl::kDataRegionIdx].base_pos(
-        regions[ElfModule::Impl::kRelRoRegionIdx].base_pos() +
-        regions[ElfModule::Impl::kRelRoRegionIdx].size());
-
-    regions[ElfModule::Impl::kDataRegionIdx].base_address(
-        regions[ElfModule::Impl::kRelRoRegionIdx].base_address() +
-        regions[ElfModule::Impl::kRelRoRegionIdx].size());
+    LOG_IF(m_module.m_impl->m_code_region_idx ==
+           m_module.m_impl->kUninitializedRegionIdx, FATAL)
+        << "code segment not found!";
 }
 
 void
@@ -835,8 +849,7 @@ ElfModuleBuilder::Impl::build_static_functions()
     static constexpr unsigned kInsertedFunctionSize = 0xFFFFFFFFU;
 
     std::vector<ElfFunction> static_funcs;
-    const MemoryRegion &code_region =
-        m_module.m_impl->m_mem_regions[ElfModule::Impl::kCodeRegionIdx];
+    const MemoryRegion &code_region = m_module.code_region();
 
     std::map<addr_t, unsigned> func_map;
     for (const auto &sec : m_module.binary().sections()) {
@@ -1045,6 +1058,9 @@ ElfModuleBuilder::Impl::build_call_sites()
         auto cur_addr = func.address();
         auto last_branch_addr = func.address();
 
+        DVLOG(5) << "building call sites for function @ "
+                 << std::hex << func.address() << std::dec << " id " << func.idx();
+
         while (cs_disasm_iter(m_disasm.get(), &data, &byte_size, &cur_addr,
                               m_cs_inst.get())) {
             if (!x64::is_branch(m_cs_inst.get())) {
@@ -1088,7 +1104,7 @@ ElfModuleBuilder::Impl::build_call_sites()
                 read_got_offset(m_module, m_disasm.get(), tmp_cs_inst.get(),
                                 target_addr);
 
-            if (m_module.is_inside_got(got_offset)) {
+            if (m_module.is_inside_got_region(got_offset)) {
                 // target function is dynamic
                 target_func = m_module.get_dynamic_function_by_got(got_offset);
                 if (got_offset == 0 || target_func == nullptr) {
