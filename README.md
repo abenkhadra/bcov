@@ -7,13 +7,13 @@ pruning, precise CFG analyses, and sophisticated instrumentation techniques.
 
 ## Resources
 
-  - Details are available in our [paper][link-preprint] which is accepted to ESEC/FSE'20.
-  - This [post][link-llvmdev] on llvm-dev briefly introduces **bcov** and discusses potential future work.
-  - This [blog post][link-post1] elaborates on the availability of function definitions in stripped binaries.
+  - Details are available in our [paper][link-preprint], which is accepted to ESEC/FSE'20.
+  - We have a [post][link-llvmdev] on the llvm-dev mailing list. It briefly introduces **bcov** and discusses potential future work.
+  - This blog [post][link-post1] elaborates on the availability of function definitions in stripped binaries.
 
 ## Software prerequisites
 
-The following software must be available:
+The following software packages must be available:
    - [capstone][link-capstone] branch `next` commit #c3b4ce1901
    - [unicorn][link-unicorn]  branch `master` commit #536c4e77c4
 
@@ -22,8 +22,8 @@ tested yet. The script `install.sh` can be used for installation.
 
 ## Research reproducibility
 
-We provide a [Dockerfile][link-dockerfile] which installs **bcov** and runs the available experiment. 
-Please checkout the supplemental [artifacts][link-artifacts] for more details. 
+We provide a [Dockerfile][link-dockerfile] which installs **bcov** and runs a coverage analysis experiment.
+Please checkout the supplemental [artifacts][link-artifacts] for more details.
 
 ## Usage
 
@@ -69,7 +69,7 @@ re-analyzed to report coverage. Coverage will be reported for each basic block i
 
 Also, a coverage summary is reported for each function. For example, it shows the basic block and instruction coverage ratios.
 
-For a given function, it is possible to selectively dump various program graphs like the CFG and superblock dominator graph. 
+For a given function, it is possible to selectively dump various program graphs like the CFG and superblock dominator graph.
 For example, consider function `S_search_const` in `perl`,
 
 ```shell script
@@ -85,19 +85,23 @@ This command will dump the following files:
    - func_421d90.sb.dom.dot. Superblock dominator graph.
 
 Graphs are dumped in the standard DOT format and can be viewed using a dot viewer like `xdot`.
-Please refer to this [blog post][link-post2] for additional details. 
+Please refer to this [blog post][link-post2] for additional details.
 
 ## Citing
 
 For citation in an academic work please use:
 
     @inproceedings{BenKhadra:FSE2020,
-    address = {Sacramento, CA, USA},
+    address = {Virtual Event, USA},
     author = {{Ben Khadra}, M. Ammar and Stoffel, Dominik and Kunz, Wolfgang},
-    booktitle = {ACM Joint European Software Engineering Conference and Symposium on the Foundations of Software Engineering - ESEC/FSE'20 (accepted)},
+    booktitle = {ACM Joint European Software Engineering Conference and Symposium on the Foundations of Software Engineering - ESEC/FSE'20},
+    doi = {10.1145/3368089.3409694},
+    pages = {1153--1164},
     publisher = {ACM Press},
     title = {{Efficient Binary-Level Coverage Analysis}},
-    year = {2020}
+    year = {2020},
+    month = {nov},
+    day = {6-13}    
     }
 
 ## License
