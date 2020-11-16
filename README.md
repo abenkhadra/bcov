@@ -8,7 +8,7 @@ We summarized our work in a 2-min teaser [video][link-teaser].
 
 ## Resources
 
-  - Details are available in our ESEC/FSE'20 [paper][link-paper]. You can find a slightly expanded, but less polished, pre-print [here][link-preprint].
+  - Details are available in our ESEC/FSE'20 [paper][link-paper]. You can find a slightly expanded pre-print [here][link-preprint].
   - We have a [post][link-llvmdev] on the llvm-dev mailing list. It briefly introduces **bcov** and discusses potential future work.
   - This blog [post][link-post1] elaborates on the availability of function definitions in stripped binaries.
   - You can find our ESEC/FSE'20 talk [here][link-talk]. The slide deck (with transcript) is also [available][link-slide-deck].
