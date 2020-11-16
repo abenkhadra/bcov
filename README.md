@@ -4,14 +4,15 @@
 A tool for efficient binary-level coverage analysis. **bcov** statically
 instruments x86-64 ELF binaries without compiler support. It features probe
 pruning, precise CFG analyses, and sophisticated instrumentation techniques.
+We summarized our work in a 2-min teaser [video](link-teaser).
 
 ## Resources
 
-  - Details are available in our [paper][link-preprint], which is accepted to ESEC/FSE'20.
+  - Details are available in our ESEC/FSE'20 [paper](link-paper). You can find a slightly expanded, but less polished, pre-print [here](link-preprint).
   - We have a [post][link-llvmdev] on the llvm-dev mailing list. It briefly introduces **bcov** and discusses potential future work.
   - This blog [post][link-post1] elaborates on the availability of function definitions in stripped binaries.
-  - ESEC/FSE'20 slide deck is [available][link-slide-deck] (with transcript).
-  - Official reddit [thread][link-reddit].
+  - You can find our ESEC/FSE'20 talk [here](link-talk). The slide deck (with transcript) is also [available][link-slide-deck].
+
 
 ## Software prerequisites
 
@@ -119,4 +120,6 @@ This software is distributed under the MIT license. See `LICENSE.txt` for detail
  [link-dockerfile]: https://github.com/abenkhadra/bcov-artifacts/blob/master/Dockerfile
  [link-llvmdev]: http://lists.llvm.org/pipermail/llvm-dev/2020-June/142821.html
  [link-slide-deck]: https://docs.google.com/presentation/d/1BgcOaw06AcfCzc8PMPkhYANKUkevbxAPFQkbERpXBJ4/edit?usp=sharing
- [link-reddit]: https://www.reddit.com/r/ESECFSE/comments/jlka94/efficient_binarylevel_coverage_analysis/
+ [link-talk]: https://youtu.be/pns0lJ5FwwA
+ [link-teaser]: https://youtu.be/AT29eitsChc
+ [link-paper]:  https://doi.org/10.1145/3368089.3409694
