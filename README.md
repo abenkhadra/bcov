@@ -4,7 +4,7 @@
 A tool for efficient binary-level coverage analysis. **bcov** statically
 instruments x86-64 ELF binaries without compiler support. It features probe
 pruning, precise CFG analyses, and sophisticated instrumentation techniques.
-We summarized our work in a 2-min teaser [video][link-teaser].
+We summarized this research in a 2-min teaser [video][link-teaser].
 
 ## Resources
 
@@ -12,6 +12,7 @@ We summarized our work in a 2-min teaser [video][link-teaser].
   - We have a [post][link-llvmdev] on the llvm-dev mailing list. It briefly introduces **bcov** and discusses potential future work.
   - This blog [post][link-post1] elaborates on the availability of function definitions in stripped binaries.
   - You can find our ESEC/FSE'20 talk [here][link-talk]. The slide deck (with transcript) is also [available][link-slide-deck].
+  - A sample set of binaries that we patched using `bcov` is available [here][link-samples]. However, the complete set of benchmarks is available on our archival [repository][link-benchmarks].
 
 
 ## Software prerequisites
@@ -104,7 +105,7 @@ For citation in an academic work please use:
     title = {{Efficient Binary-Level Coverage Analysis}},
     year = {2020},
     month = {nov},
-    day = {6-13}    
+    day = {6--13}    
     }
 
 ## License
@@ -123,3 +124,5 @@ This software is distributed under the MIT license. See `LICENSE.txt` for detail
  [link-talk]: https://youtu.be/pns0lJ5FwwA
  [link-teaser]: https://youtu.be/AT29eitsChc
  [link-paper]:  https://doi.org/10.1145/3368089.3409694
+ [link-samples]: https://github.com/abenkhadra/bcov-artifacts/tree/master/sample-binaries
+ [link-benchmarks]: https://doi.org/10.5281/zenodo.3876047
